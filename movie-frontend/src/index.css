@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@clerk/ui/themes/shadcn.css";
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
@@ -26,47 +27,78 @@
   }
 }
 
+@keyframes cinema-grain {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(1.5%, -1.8%, 0);
+  }
+  50% {
+    transform: translate3d(-1.2%, 1.5%, 0);
+  }
+  75% {
+    transform: translate3d(1.8%, 1.1%, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cinema-spotlight {
+  0% {
+    transform: translateX(-2%) translateY(0%);
+  }
+  50% {
+    transform: translateX(2%) translateY(2%);
+  }
+  100% {
+    transform: translateX(-2%) translateY(0%);
+  }
+}
+
+
 :root {
-  --background: oklch(0.975 0.016 86);
-  --foreground: oklch(0.25 0.02 70);
-  --card: oklch(0.988 0.012 86);
-  --card-foreground: oklch(0.24 0.02 70);
-  --popover: oklch(0.995 0.008 88);
-  --popover-foreground: oklch(0.23 0.02 70);
-  --primary: oklch(0.48 0.08 184);
-  --primary-foreground: oklch(0.98 0.006 95);
-  --secondary: oklch(0.94 0.018 84);
-  --secondary-foreground: oklch(0.3 0.02 70);
-  --muted: oklch(0.945 0.015 85);
-  --muted-foreground: oklch(0.5 0.02 72);
-  --accent: oklch(0.935 0.02 82);
-  --accent-foreground: oklch(0.3 0.02 70);
-  --destructive: oklch(0.62 0.18 30);
-  --border: oklch(0.86 0.022 82);
-  --input: oklch(0.86 0.022 82);
-  --ring: oklch(0.55 0.08 184);
+  --background: oklch(0.17 0.012 35);
+  --foreground: oklch(0.95 0.012 82);
+  --card: oklch(0.23 0.016 30);
+  --card-foreground: oklch(0.95 0.012 82);
+  --popover: oklch(0.21 0.015 30);
+  --popover-foreground: oklch(0.95 0.012 82);
+  --primary: oklch(0.79 0.13 83);
+  --primary-foreground: oklch(0.2 0.015 32);
+  --secondary: oklch(0.31 0.055 28);
+  --secondary-foreground: oklch(0.95 0.012 82);
+  --muted: oklch(0.26 0.015 33);
+  --muted-foreground: oklch(0.78 0.012 75);
+  --accent: oklch(0.3 0.05 24);
+  --accent-foreground: oklch(0.95 0.012 82);
+  --destructive: oklch(0.64 0.2 26);
+  --border: oklch(0.36 0.018 32);
+  --input: oklch(0.36 0.018 32);
+  --ring: oklch(0.79 0.13 83);
   --radius: 0.95rem;
 }
 
 .dark {
-  --background: oklch(0.2 0.02 70);
-  --foreground: oklch(0.96 0.01 86);
-  --card: oklch(0.24 0.02 70);
-  --card-foreground: oklch(0.96 0.01 86);
-  --popover: oklch(0.24 0.02 70);
-  --popover-foreground: oklch(0.96 0.01 86);
-  --primary: oklch(0.84 0.03 180);
-  --primary-foreground: oklch(0.25 0.02 70);
-  --secondary: oklch(0.3 0.02 70);
-  --secondary-foreground: oklch(0.96 0.01 86);
-  --muted: oklch(0.3 0.02 70);
-  --muted-foreground: oklch(0.75 0.02 78);
-  --accent: oklch(0.35 0.02 70);
-  --accent-foreground: oklch(0.96 0.01 86);
-  --destructive: oklch(0.7 0.17 30);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.72 0.04 180);
+  --background: oklch(0.14 0.01 26);
+  --foreground: oklch(0.96 0.012 82);
+  --card: oklch(0.2 0.014 28);
+  --card-foreground: oklch(0.96 0.012 82);
+  --popover: oklch(0.2 0.014 28);
+  --popover-foreground: oklch(0.96 0.012 82);
+  --primary: oklch(0.81 0.13 83);
+  --primary-foreground: oklch(0.18 0.013 30);
+  --secondary: oklch(0.29 0.05 26);
+  --secondary-foreground: oklch(0.95 0.012 82);
+  --muted: oklch(0.24 0.014 28);
+  --muted-foreground: oklch(0.77 0.012 74);
+  --accent: oklch(0.29 0.045 24);
+  --accent-foreground: oklch(0.96 0.012 82);
+  --destructive: oklch(0.65 0.2 26);
+  --border: oklch(1 0 0 / 17%);
+  --input: oklch(1 0 0 / 19%);
+  --ring: oklch(0.81 0.13 83);
 }
 
 @theme inline {
@@ -110,4 +142,26 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
+}
+
+@layer utilities {
+  .cinema-grain {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 0.6px, transparent 0.6px);
+    background-size: 3px 3px;
+    mix-blend-mode: soft-light;
+    opacity: 0.17;
+    animation: cinema-grain 420ms steps(2, end) infinite;
+  }
+
+  .cinema-vignette {
+    background: radial-gradient(circle at center, transparent 32%, rgba(0, 0, 0, 0.6) 100%);
+    opacity: 0.8;
+  }
+
+  .cinema-spotlight {
+    background: radial-gradient(42% 32% at 50% 12%, rgba(255, 216, 145, 0.18), transparent 76%);
+    animation: cinema-spotlight 7.5s ease-in-out infinite;
+    filter: blur(2px);
+  }
+
 }

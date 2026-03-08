@@ -1,89 +1,81 @@
 # Tonight's Movie Picks
 
-A full-stack movie recommender with a modern cream-tone UI, adaptive ranking, and personal tracking tools.
+A movie recommender with adaptive ranking, watch-state tracking, and a cinematic interface.
 
 ## What It Does
-- Pulls highest-rated movies by genre from TMDB.
-- Enriches each title with IMDb rating and metadata from OMDb.
-- Ranks recommendations with a hybrid model:
-  - IMDb + user score base ranking
-  - your likes/skips
-  - watched history signals
+- Pulls top genre movies from TMDB.
+- Enriches titles with IMDb metadata from OMDb.
+- Supports authenticated profiles with per-user cloud sync.
+- Ranks picks using provider scores + personal behavior signals:
+  - likes/skips
+  - watched history
+  - watch-later intent
 - Supports `Discover`, `Watched`, `Watch Later`, and `Dashboard` views.
-- Persists frontend state in `localStorage` so your session survives refreshes.
+- Persists state in `localStorage`.
 
 ## Stack
-- Frontend: React 18, Vite, Tailwind CSS v4, shadcn/ui
-- Backend: Flask, Requests, Flask-CORS, python-dotenv
-- Data APIs: TMDB + OMDb
+- Frontend: React 18, Vite, Tailwind CSS v4, shadcn/ui, Clerk React
+- API: Vercel Serverless Functions (`movie-frontend/api/movies/genre.js`, `movie-frontend/api/profile.js`)
+- Persistence: Neon Postgres (`movie_user_profiles`)
+- Data Providers: TMDB + OMDb
+- Legacy local backend (optional): Flask in `backend/`
 
-## Project Structure
+## Structure
 ```text
 Movie-Project/
-├── backend/
-│   ├── backend.py
-│   └── .env.example
 ├── movie-frontend/
+│   ├── api/movies/genre.js
 │   ├── src/
-│   ├── package.json
-│   └── vite.config.js
+│   ├── .env.example
+│   └── package.json
+├── backend/                    # optional legacy local backend
 └── README.md
 ```
 
-## 1) Backend Setup
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install flask flask-cors python-dotenv requests
-cp .env.example .env
-```
-
-Set API keys in `backend/.env`:
-```env
-OMDB_API_KEY=your_omdb_key
-TMDB_API_KEY=your_tmdb_key
-```
-
-Run backend:
-```bash
-python3 backend.py
-```
-
-Backend listens on `http://127.0.0.1:5050`.
-
-## 2) Frontend Setup
+## Local Development
+### Frontend (Vite)
 ```bash
 cd movie-frontend
 npm install
-cp .env.example .env.local
-```
-
-`movie-frontend/.env.local`:
-```env
-VITE_API_BASE_URL=http://127.0.0.1:5050
-```
-
-Run frontend:
-```bash
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+### API option A: Vercel local runtime
+Run Vercel local dev from `movie-frontend` so `/api/*` functions resolve:
+```bash
+vercel dev
+```
 
-## API
-- `GET /movies/genre/<genre_id>`
-  - Returns up to 20 enriched titles.
-- `GET /movies/genre/<genre_id>/rating/<min_rating>`
-  - Legacy compatibility route.
+### API option B: Legacy Flask backend
+If you want to use Flask locally instead:
+1. Set frontend env var in `movie-frontend/.env.local`:
+```env
+VITE_API_BASE_URL=http://127.0.0.1:5050
+```
+2. Start backend:
+```bash
+cd backend
+python3 backend.py
+```
 
-## Notes For GitHub Safety
+## Deploy (Recommended: Vercel)
+Deploy `movie-frontend` as one Vercel project.
+
+Required environment variables in Vercel Project Settings:
+- `OMDB_API_KEY`
+- `TMDB_API_KEY`
+- `VITE_API_BASE_URL` = `/api`
+- `VITE_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `DATABASE_URL`
+
+## API Route
+- `GET /api/movies/genre?genreId=<id>`
+- Optional: `minRating=<number>`
+- `GET /api/profile` (requires Clerk Bearer token)
+- `PUT /api/profile` (requires Clerk Bearer token)
+
+## Security Notes
 - Never commit real API keys.
-- `.env` files are ignored by git.
-- Use only `.env.example` templates in commits.
-
-## Current UX Highlights
-- Minimal, non-card-heavy recommendation rows.
-- Fast swap flow with undo.
-- Watched/Watch Later actions available directly from recommendation rows.
-- View transition animations across Discover/Watched/Watch Later/Dashboard.
+- `.env` files are ignored.
+- Rotate keys if they were exposed.
