@@ -1,12 +1,16 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
+import os
+from dotenv import load_dotenv
 import requests
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-OMDB_API_KEY = 'REDACTED_OMDB_KEY'
-TMDB_API_KEY = 'REDACTED_TMDB_KEY'
+OMDB_API_KEY = os.getenv('OMDB_API_KEY')
+TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 
 
 
