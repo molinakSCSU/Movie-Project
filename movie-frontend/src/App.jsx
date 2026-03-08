@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SignInButton, UserButton, useAuth } from '@clerk/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
+import { supabase, supabaseEnabled } from '@/lib/supabase';
 
 const STORAGE_KEY = 'movie_recommender_state_v4';
 const MAX_ACTIVITY_LOG = 220;
 const PROFILE_SYNC_DEBOUNCE_MS = 820;
 const DEFAULT_STATUS_MESSAGE = 'Pick a genre to load the top-rated lineup.';
 const VALID_VIEWS = new Set(['discover', 'watched', 'watch-later', 'dashboard']);
+const AUTH_REDIRECT_URL =
+  typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : undefined;
 
 const viewTransition = {
   initial: { opacity: 0, y: 18, filter: 'blur(4px)' },
@@ -92,16 +94,6 @@ const resolveGenreEndpoint = (genreId) => {
   }
 
   return `${base}/movies/genre/${encodedGenre}`;
-};
-
-const resolveProfileEndpoint = () => {
-  const base = API_BASE_URL.replace(/\/$/, '');
-
-  if (base.startsWith('/')) {
-    return `${base}/profile`;
-  }
-
-  return `${base}/profile`;
 };
 
 const toMovieKey = (movie) => `${movie?.title || 'untitled'}::${movie?.release_year || ''}`;
@@ -277,8 +269,10 @@ const rankMoviesByProfile = (movies, watchedKeys, feedbackByMovie, tasteProfile,
   });
 };
 
-function AppContent({ auth, clerkEnabled }) {
-  const { isLoaded: isAuthLoaded, isSignedIn, userId, getToken } = auth;
+function App() {
+  const [isAuthLoaded, setIsAuthLoaded] = useState(!supabaseEnabled);
+  const [userId, setUserId] = useState(null);
+  const [userEmail, setUserEmail] = useState('');
   const persisted = useMemo(() => normalizePersistedState(loadPersistedState()), []);
 
   const [genreId, setGenreId] = useState(() => persisted.genreId);
@@ -301,11 +295,128 @@ function AppContent({ auth, clerkEnabled }) {
   const [profileSyncStatus, setProfileSyncStatus] = useState('local-only');
   const [profileSyncError, setProfileSyncError] = useState('');
   const [isProfileHydrating, setIsProfileHydrating] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authEmailInput, setAuthEmailInput] = useState('');
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
 
   const swapTimerRef = useRef(null);
   const profileSaveTimerRef = useRef(null);
   const hasHydratedProfileRef = useRef(false);
   const lastSyncedPayloadRef = useRef('');
+  const isSignedIn = Boolean(userId);
+  const isGuestMode = !supabaseEnabled || !isSignedIn;
+
+  useEffect(() => {
+    if (!supabaseEnabled || !supabase) {
+      setIsAuthLoaded(true);
+      setUserId(null);
+      setUserEmail('');
+      return;
+    }
+
+    let isMounted = true;
+
+    const applySession = (session) => {
+      if (!isMounted) {
+        return;
+      }
+
+      const nextUser = session?.user ?? null;
+      setUserId(nextUser?.id ?? null);
+      setUserEmail(nextUser?.email ?? '');
+      setIsAuthLoaded(true);
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      applySession(data?.session ?? null);
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  const handleSignIn = async () => {
+    if (!supabaseEnabled || !supabase) {
+      setProfileSyncError('Supabase auth is not configured.');
+      return;
+    }
+
+    setAuthEmailInput(userEmail || '');
+    setIsAuthModalOpen(true);
+    setProfileSyncError('');
+  };
+
+  const closeAuthModal = () => {
+    if (isAuthSubmitting) {
+      return;
+    }
+    setIsAuthModalOpen(false);
+  };
+
+  const sendMagicLink = async () => {
+    if (!supabaseEnabled || !supabase) {
+      setProfileSyncError('Supabase auth is not configured.');
+      return;
+    }
+
+    const email = authEmailInput.trim();
+    if (!email) {
+      setProfileSyncStatus('degraded');
+      setProfileSyncError('Enter an email address first.');
+      return;
+    }
+
+    const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailLooksValid) {
+      setProfileSyncStatus('degraded');
+      setProfileSyncError('Enter a valid email address.');
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: AUTH_REDIRECT_URL,
+      },
+    });
+
+    setIsAuthSubmitting(false);
+
+    if (signInError) {
+      setProfileSyncStatus('degraded');
+      setProfileSyncError(signInError.message);
+      return;
+    }
+
+    setStatusMessage(`Magic link sent to ${email}. Open it to finish sign in.`);
+    setProfileSyncError('');
+    setIsAuthModalOpen(false);
+  };
+
+  const handleSignOut = async () => {
+    if (!supabaseEnabled || !supabase) {
+      return;
+    }
+
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      setProfileSyncStatus('degraded');
+      setProfileSyncError(signOutError.message);
+      return;
+    }
+
+    setStatusMessage('Signed out. Demo mode active.');
+    setProfileSyncStatus('local-only');
+    setProfileSyncError('');
+  };
 
   const watchedKeys = useMemo(() => new Set(watchedEntries.map((entry) => entry.key)), [watchedEntries]);
   const watchLaterSet = useMemo(() => new Set(watchLaterKeys), [watchLaterKeys]);
@@ -416,7 +527,7 @@ function AppContent({ auth, clerkEnabled }) {
   );
 
   const syncLabel = useMemo(() => {
-    if (!clerkEnabled) {
+    if (!supabaseEnabled) {
       return 'Guest Mode';
     }
 
@@ -441,8 +552,7 @@ function AppContent({ auth, clerkEnabled }) {
     }
 
     return 'Local Only';
-  }, [clerkEnabled, isAuthLoaded, isSignedIn, isProfileHydrating, profileSyncStatus]);
-  const isGuestMode = !clerkEnabled || !isSignedIn;
+  }, [isAuthLoaded, isSignedIn, isProfileHydrating, profileSyncStatus]);
   const rankingWatchedKeys = useMemo(() => (isGuestMode ? new Set() : watchedKeys), [isGuestMode, watchedKeys]);
   const rankingFeedbackByMovie = useMemo(() => (isGuestMode ? {} : feedbackByMovie), [isGuestMode, feedbackByMovie]);
   const rankingTasteProfile = useMemo(() => (isGuestMode ? {} : tasteProfile), [isGuestMode, tasteProfile]);
@@ -737,7 +847,24 @@ function AppContent({ auth, clerkEnabled }) {
   }, []);
 
   useEffect(() => {
-    if (!clerkEnabled) {
+    if (!isAuthModalOpen) {
+      return;
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeAuthModal();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isAuthModalOpen, isAuthSubmitting]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !supabase) {
       if (profileSaveTimerRef.current) {
         clearTimeout(profileSaveTimerRef.current);
         profileSaveTimerRef.current = null;
@@ -775,35 +902,20 @@ function AppContent({ auth, clerkEnabled }) {
 
     const loadProfile = async () => {
       try {
-        const token = await getToken();
-        if (!token) {
-          throw new Error('Missing auth token for profile load.');
+        const { data, error: selectError } = await supabase
+          .from('user_profiles')
+          .select('profile_state')
+          .eq('user_id', userId)
+          .limit(1);
+
+        if (selectError) {
+          throw selectError;
         }
 
-        const response = await fetch(resolveProfileEndpoint(), {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          let detail = 'Failed to load profile from cloud.';
-          try {
-            const payload = await response.json();
-            if (payload?.error) {
-              detail = payload.error;
-            }
-          } catch {
-            // Keep fallback detail.
-          }
-          throw new Error(detail);
-        }
-
-        const payload = await response.json();
+        const payload = Array.isArray(data) ? data[0] : null;
         const remoteState =
-          payload?.profileState && typeof payload.profileState === 'object' && !Array.isArray(payload.profileState)
-            ? payload.profileState
+          payload?.profile_state && typeof payload.profile_state === 'object' && !Array.isArray(payload.profile_state)
+            ? payload.profile_state
             : null;
 
         if (isCancelled) {
@@ -839,7 +951,7 @@ function AppContent({ auth, clerkEnabled }) {
     return () => {
       isCancelled = true;
     };
-  }, [clerkEnabled, isAuthLoaded, isSignedIn, userId, getToken]);
+  }, [isAuthLoaded, isSignedIn, userId]);
 
   useEffect(() => {
     applyRankingToQueue();
@@ -858,7 +970,7 @@ function AppContent({ auth, clerkEnabled }) {
   }, [persistableState]);
 
   useEffect(() => {
-    if (!clerkEnabled || !isAuthLoaded || !isSignedIn || !userId) {
+    if (!supabaseEnabled || !supabase || !isAuthLoaded || !isSignedIn || !userId) {
       return;
     }
 
@@ -880,31 +992,16 @@ function AppContent({ auth, clerkEnabled }) {
 
     profileSaveTimerRef.current = setTimeout(async () => {
       try {
-        const token = await getToken();
-        if (!token) {
-          throw new Error('Missing auth token for profile sync.');
-        }
-
-        const response = await fetch(resolveProfileEndpoint(), {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+        const { error: upsertError } = await supabase.from('user_profiles').upsert(
+          {
+            user_id: userId,
+            profile_state: persistableState,
           },
-          body: JSON.stringify({ profileState: persistableState }),
-        });
+          { onConflict: 'user_id' },
+        );
 
-        if (!response.ok) {
-          let detail = 'Cloud profile sync failed.';
-          try {
-            const payload = await response.json();
-            if (payload?.error) {
-              detail = payload.error;
-            }
-          } catch {
-            // Keep fallback detail.
-          }
-          throw new Error(detail);
+        if (upsertError) {
+          throw upsertError;
         }
 
         lastSyncedPayloadRef.current = serialized;
@@ -925,7 +1022,7 @@ function AppContent({ auth, clerkEnabled }) {
         profileSaveTimerRef.current = null;
       }
     };
-  }, [clerkEnabled, isAuthLoaded, isSignedIn, userId, isProfileHydrating, persistableState, getToken]);
+  }, [isAuthLoaded, isSignedIn, userId, isProfileHydrating, persistableState]);
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background text-foreground">
@@ -953,18 +1050,23 @@ function AppContent({ auth, clerkEnabled }) {
               >
                 {syncLabel}
               </span>
-              {clerkEnabled && isAuthLoaded && !isSignedIn && (
-                <SignInButton mode="modal">
-                  <Button size="xs" variant="outline">
-                    Sign In
-                  </Button>
-                </SignInButton>
+              {supabaseEnabled && isAuthLoaded && !isSignedIn && (
+                <Button size="xs" variant="outline" onClick={handleSignIn}>
+                  Sign In
+                </Button>
               )}
-              {clerkEnabled && isSignedIn && <UserButton />}
+              {supabaseEnabled && isSignedIn && (
+                <>
+                  <span className="text-xs text-muted-foreground">{userEmail || 'Signed in'}</span>
+                  <Button size="xs" variant="outline" onClick={handleSignOut}>
+                    Sign Out
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
-          {!isGuestMode && profileSyncError && <p className="text-xs text-destructive">{profileSyncError}</p>}
+          {profileSyncError && <p className="text-xs text-destructive">{profileSyncError}</p>}
 
           <div className="grid gap-7 justify-items-center py-2 text-center">
             <div className="grid max-w-[900px] justify-items-center gap-4">
@@ -1381,37 +1483,70 @@ function AppContent({ auth, clerkEnabled }) {
           </section>
         </main>
       </div>
+
+      <AnimatePresence>
+        {isAuthModalOpen && (
+          <>
+            <motion.button
+              aria-label="Close sign in modal"
+              className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1.8px]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              onClick={closeAuthModal}
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Sign in"
+              className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/70 bg-[linear-gradient(165deg,rgba(22,18,21,0.96),rgba(11,9,12,0.98))] p-6 shadow-[0_30px_70px_rgba(0,0,0,0.55)]"
+              initial={{ opacity: 0, y: 18, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.992 }}
+              transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="grid gap-4">
+                <div className="grid gap-1">
+                  <p className="text-xl font-semibold tracking-tight">Sign in to unlock your profile</p>
+                  <p className="text-sm text-muted-foreground">
+                    Get watched history, watch later, likes/skips, and dashboard sync.
+                  </p>
+                </div>
+
+                <label className="grid gap-1.5 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Email</span>
+                  <input
+                    type="email"
+                    value={authEmailInput}
+                    onChange={(event) => setAuthEmailInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void sendMagicLink();
+                      }
+                    }}
+                    placeholder="you@example.com"
+                    autoFocus
+                    className="h-10 rounded-lg border border-border/80 bg-background/85 px-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/30"
+                  />
+                </label>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Button size="xs" variant="outline" onClick={closeAuthModal} disabled={isAuthSubmitting}>
+                    Cancel
+                  </Button>
+                  <Button size="xs" onClick={sendMagicLink} disabled={isAuthSubmitting}>
+                    {isAuthSubmitting ? 'Sending...' : 'Send Magic Link'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
-}
-
-function AuthenticatedApp({ clerkEnabled }) {
-  const { isLoaded, isSignedIn, userId, getToken } = useAuth();
-
-  return (
-    <AppContent
-      clerkEnabled={clerkEnabled}
-      auth={{ isLoaded, isSignedIn: Boolean(isSignedIn), userId: userId ?? null, getToken }}
-    />
-  );
-}
-
-function App({ clerkEnabled = false }) {
-  if (!clerkEnabled) {
-    return (
-      <AppContent
-        clerkEnabled={false}
-        auth={{
-          isLoaded: true,
-          isSignedIn: false,
-          userId: null,
-          getToken: async () => null,
-        }}
-      />
-    );
-  }
-
-  return <AuthenticatedApp clerkEnabled={clerkEnabled} />;
 }
 
 export default App;

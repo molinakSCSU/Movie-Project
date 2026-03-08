@@ -9,14 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@clerk/backend": "^3.0.1",
-    "@clerk/react": "^6.0.1",
-    "@clerk/ui": "^1.0.1",
     "@fontsource-variable/geist": "^5.2.8",
-    "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
+    "@supabase/supabase-js": "^2.98.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.35.1",

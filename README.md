@@ -5,18 +5,14 @@ A movie recommender with adaptive ranking, watch-state tracking, and a cinematic
 ## What It Does
 - Pulls top genre movies from TMDB.
 - Enriches titles with IMDb metadata from OMDb.
-- Supports authenticated profiles with per-user cloud sync.
-- Ranks picks using provider scores + personal behavior signals:
-  - likes/skips
-  - watched history
-  - watch-later intent
-- Supports `Discover`, `Watched`, `Watch Later`, and `Dashboard` views.
-- Persists state in `localStorage`.
+- Guest demo mode: search + swap only.
+- Signed-in mode: watched history, watch later, likes/skips, and dashboard.
+- Syncs signed-in user profiles to Supabase (`user_profiles`) with RLS.
 
 ## Stack
-- Frontend: React 18, Vite, Tailwind CSS v4, shadcn/ui, Clerk React
-- API: Vercel Serverless Functions (`movie-frontend/api/movies/genre.js`, `movie-frontend/api/profile.js`)
-- Persistence: Neon Postgres (`movie_user_profiles`)
+- Frontend: React 18, Vite, Tailwind CSS v4, shadcn/ui
+- Auth + Profile DB: Supabase Auth + Postgres
+- API: Vercel Serverless Function (`movie-frontend/api/movies/genre.js`)
 - Data Providers: TMDB + OMDb
 - Legacy local backend (optional): Flask in `backend/`
 
@@ -25,6 +21,7 @@ A movie recommender with adaptive ranking, watch-state tracking, and a cinematic
 Movie-Project/
 ├── movie-frontend/
 │   ├── api/movies/genre.js
+│   ├── supabase/schema.sql
 │   ├── src/
 │   ├── .env.example
 │   └── package.json
@@ -64,16 +61,13 @@ Deploy `movie-frontend` as one Vercel project.
 Required environment variables in Vercel Project Settings:
 - `OMDB_API_KEY`
 - `TMDB_API_KEY`
-- `VITE_API_BASE_URL` = `/api`
-- `VITE_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `DATABASE_URL`
+- `VITE_API_BASE_URL=/api`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
 ## API Route
 - `GET /api/movies/genre?genreId=<id>`
 - Optional: `minRating=<number>`
-- `GET /api/profile` (requires Clerk Bearer token)
-- `PUT /api/profile` (requires Clerk Bearer token)
 
 ## Security Notes
 - Never commit real API keys.
